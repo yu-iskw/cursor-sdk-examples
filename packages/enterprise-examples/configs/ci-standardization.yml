@@ -1,0 +1,24 @@
+task: ci-standardization
+# Cursor SDK model id; use ids your team allows (see https://cursor.com/docs/sdk/typescript).
+model:
+  id: composer-2
+runtime:
+  type: cloud
+target:
+  repos:
+    - repoUrl: https://github.com/your-org/your-repo
+      startingRef: main
+    - repoUrl: https://github.com/your-org/your-other-repo
+      startingRef: main
+policy: >-
+  Align CI with the platform baseline: checkout, Node setup from .node-version, pnpm install, build, test, lint, and security checks. Use least-privilege workflow permissions and preserve deployment gates.
+validation:
+  commands:
+    - pnpm build
+    - pnpm test
+    - pnpm lint
+guardrails:
+  - Do not remove existing production deploy approvals.
+  - Call out any secrets or environment assumptions.
+dryRun: true
+autoCreatePR: true

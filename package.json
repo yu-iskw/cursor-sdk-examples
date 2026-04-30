@@ -45,8 +45,14 @@
   },
   "packageManager": "pnpm@10.28.1",
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sqlite3"
+    ],
     "overrides": {
-      "tar": "7.5.11"
+      "sqlite3": "6.0.1",
+      "tar": "7.5.11",
+      "undici": "6.24.0"
     }
   },
   "engines": {

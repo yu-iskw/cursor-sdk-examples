@@ -1,0 +1,23 @@
+task: repo-metadata-hygiene
+# Cursor SDK model id; use ids your team allows (see https://cursor.com/docs/sdk/typescript).
+model:
+  id: composer-2
+runtime:
+  type: cloud
+target:
+  repos:
+    - repoUrl: https://github.com/your-org/your-repo
+      startingRef: main
+    - repoUrl: https://github.com/your-org/your-other-repo
+      startingRef: main
+policy: >-
+  Normalize CODEOWNERS, README ownership information, service catalog metadata, and runbook links from the supplied source of truth. Do not invent missing owners or support channels.
+validation:
+  commands:
+    - pnpm test
+    - pnpm lint
+guardrails:
+  - Use only authoritative owner/team names from policy input.
+  - List missing metadata as follow-up instead of guessing.
+dryRun: true
+autoCreatePR: true

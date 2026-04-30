@@ -1,0 +1,24 @@
+{
+  "name": "@cursor-sdk-examples/enterprise-examples",
+  "version": "1.0.0",
+  "description": "Enterprise Cursor SDK cookbook examples for governed repository automation.",
+  "license": "Apache-2.0",
+  "author": "",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && node scripts/copy-fixtures.mjs",
+    "dependency-remediation": "node dist/cli/dependency-remediation.js",
+    "ci-standardization": "node dist/cli/ci-standardization.js",
+    "repo-metadata-hygiene": "node dist/cli/repo-metadata-hygiene.js"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.10",
+    "commander": "^14.0.3",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

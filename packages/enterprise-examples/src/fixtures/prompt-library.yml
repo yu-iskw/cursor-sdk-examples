@@ -1,0 +1,40 @@
+version: 1
+
+modes:
+  dryRun: 'Dry-run mode: produce a plan and diff summary only. Do not edit files.'
+  execute: 'Execution mode: make the requested repository changes and summarize the diff.'
+
+defaultGuardrails:
+  - Work in PR-only mode. Do not push directly to protected branches.
+  - Prefer minimal, reviewable diffs over broad refactors.
+  - Do not read, print, or commit secrets such as .env files, credentials, or tokens.
+  - Preserve public behavior unless the policy explicitly requires a change.
+  - Report validation commands run, commands skipped, and any remaining risk.
+
+tasks:
+  dependency-remediation:
+    title: Dependency and CVE remediation
+    instructions:
+      - Identify vulnerable or disallowed dependency patterns described by the policy.
+      - Update dependency manifests and lockfiles for each ecosystem as applicable, and compatibility code only where needed.
+      - Run and report the validation commands listed in this prompt to prove dependency and security state.
+
+  ci-standardization:
+    title: CI/CD standardization
+    instructions:
+      - Inspect existing CI configuration before editing.
+      - Align workflow names, permissions, setup steps, caching, and validation jobs with the policy.
+      - Keep repository-specific deployment behavior intact unless the policy says otherwise.
+
+  repo-metadata-hygiene:
+    title: Repository metadata and CODEOWNERS hygiene
+    instructions:
+      - Update ownership and service metadata files described by the policy.
+      - Keep README and CODEOWNERS changes factual and sourced from the provided policy.
+      - Do not invent teams, owners, service names, runbooks, or support channels.
+
+finalResponseRequirements:
+  - Summarize the files changed and why.
+  - List validation evidence and exact commands run.
+  - Include branch and PR URL if one was created.
+  - Call out any blocked steps or reviewer follow-up needed.
