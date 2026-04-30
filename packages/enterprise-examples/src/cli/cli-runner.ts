@@ -16,7 +16,7 @@ interface ExampleCliOptions {
 
 type ExecuteExample = (config: EnterpriseTaskConfig) => Promise<void>;
 
-export async function runExample(task: EnterpriseTaskType, fallbackPolicy: string): Promise<void> {
+async function runExample(task: EnterpriseTaskType, fallbackPolicy: string): Promise<void> {
   await createExampleCommand(task, fallbackPolicy).parseAsync();
 }
 

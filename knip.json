@@ -7,6 +7,11 @@
       "project": ["**/*.{js,cjs,mjs,ts,cts,mts}", "!packages/**", "!.trunk/**", "!node_modules/**"]
     },
     "packages/*": {
+      "entry": [
+        "src/cli/ci-standardization.ts",
+        "src/cli/dependency-remediation.ts",
+        "src/cli/repo-metadata-hygiene.ts"
+      ],
       "project": ["src/**/*.ts"]
     }
   }
