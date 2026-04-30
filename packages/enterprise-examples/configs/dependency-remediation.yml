@@ -1,0 +1,32 @@
+# Sample: Node/pnpm monorepo. For other stacks, replace validation.commands with that repo's
+# real install/build/test/audit commands (e.g. pip, mvnw, cargo, go) and align policy text.
+task: dependency-remediation
+# Cursor SDK model id; use ids your team allows (see https://cursor.com/docs/sdk/typescript).
+model:
+  id: composer-2
+runtime:
+  type: cloud
+target:
+  repos:
+    - repoUrl: https://github.com/your-org/your-repo
+      startingRef: main
+    - repoUrl: https://github.com/your-org/your-other-repo
+      startingRef: main
+policy: >-
+  Remediate the vulnerable dependency findings for this repository. Prefer the smallest safe manifest and lockfile changes, preserve public behavior, and document any remaining manual review needed.
+  Use the repository's standard package manager and audit tooling as reflected in validation commands.
+validation:
+  # Examples for other ecosystems (use one coherent set per config, not all at once):
+  # - Python: pip install -e ".[dev]" && pytest && pip-audit
+  # - JVM: ./mvnw -q verify OR ./gradlew check
+  # - Rust: cargo build && cargo test && cargo audit
+  # - Go: go mod verify && go test ./...
+  commands:
+    - pnpm install --frozen-lockfile
+    - pnpm test
+    - pnpm lint:security
+guardrails:
+  - Do not change unrelated dependencies.
+  - Include SCA or audit evidence in the final summary.
+dryRun: true
+autoCreatePR: true
