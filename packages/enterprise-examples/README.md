@@ -144,7 +144,36 @@ pnpm --filter @cursor-sdk-examples/enterprise-examples dependency-remediation \
 
 Config shape (YAML): use **`target.repos`** (non-empty list of `repoUrl` and optional `startingRef` per repo). For a single repository you may still use the legacy flat **`target.repoUrl`** / **`target.startingRef`** fields instead of `repos`. Do not set both `repos` and `repoUrl` on the same `target`. Multiple repositories require **`runtime.type: cloud`**; local runs allow exactly one repository.
 
-For **live cloud runs** with **more than one** `target.repos` entry, the CLI **fans out** one Cursor SDK cloud agent **per repository** (the SDK accepts only one repository per `Agent.create` today), then prints **one combined summary**. **`--dry-run`** still prints a **single** prompt built from the full config (all repos listed).
+For **live cloud runs** with **more than one** `target.repos` entry, the runner starts **one** Cursor SDK cloud agent whose `cloud.repos` lists every URL (multi-repo workspace on the VM), matching [CloudOptions in the TypeScript SDK](https://cursor.com/docs/sdk/typescript). The agent receives **one** generated prompt that lists all repositories. **`--dry-run`** prints that same combined prompt.
+
+### Development environments (Dockerfile as code)
+
+Cursor cloud agents can run in **named development environments** (Dockerfile-based images, build secrets, governance). Define and version those environments in the Cursor product; this package only **selects** an environment by name on the SDK call via `runtime.env`. See Cursor’s post on [development environments for agents](https://cursor.com/blog/cloud-agent-development-environments#environment-configuration-as-code) and [CloudOptions.env](https://cursor.com/docs/sdk/typescript).
+
+```yaml
+runtime:
+  type: cloud
+  env:
+    type: cloud
+    name: my-team-dockerfile-env # must match a dashboard environment name
+```
+
+### Session env vars passed into the cloud VM (optional)
+
+To forward **non-secret names only** in YAML and supply values from the shell or CI, set **`cloudEnvVarNames`** to a list of `process.env` keys. At run time, only keys that are **set and non-empty** are sent as SDK **`cloud.envVars`**. Names must **not** start with `CURSOR_` (SDK rule). Do **not** commit secret values in YAML.
+
+```yaml
+runtime:
+  type: cloud
+target:
+  repos:
+    - repoUrl: https://github.com/your-org/service-a
+cloudEnvVarNames:
+  - NPM_TOKEN
+  - PIP_INDEX_URL
+```
+
+Each name must match `^[A-Za-z_][A-Za-z0-9_]*$` and must not start with `CURSOR_`.
 
 ### LLM model (optional)
 
@@ -194,7 +223,7 @@ Orchestration (task type, `target.repos`, `policy`, `guardrails`, SDK cloud `rep
 - **Manifests and lockfiles** depend on the ecosystem (for example `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `Pipfile.lock`, `go.sum`, `Cargo.lock`, Maven/Gradle lock semantics).
 - **`validation.commands`** should list the **real** install, build, test, and security or audit commands for the repository this run targets (for example `./mvnw verify`, `pip install -e ".[dev]" && pytest`, `cargo build && cargo audit`, `go test ./...`).
 - **One config, one command list:** the generated prompt includes a **single** bullet list under “Validation commands.” Repositories that need **different** commands should use **separate config files**, **separate runs**, or **policy text** that spells out per-repository steps until the schema supports per-repo command maps.
-- **`runtime.type: cloud`** with **multiple** `target.repos` still emits **one shared** `validation.commands` list for the generated prompt, and each fan-out run uses that same list operationally—avoid mixing heterogeneous stacks in one YAML unless **policy** spells out per-repo steps or you use **separate config files** per stack.
+- **`runtime.type: cloud`** with **multiple** `target.repos` still emits **one shared** `validation.commands` list for the generated prompt, and the **single** cloud agent uses that list for all clones in the workspace—avoid mixing heterogeneous stacks in one YAML unless **policy** spells out per-repo steps or you use **separate config files** per stack.
 
 **Example (Python-oriented `validation.commands`):**
 
@@ -223,7 +252,8 @@ autoCreatePR: true
 
 - `dryRun: true` or `--dry-run` prints the generated prompt and does not start the SDK agent or load `@cursor/sdk`.
 - Local runtime uses `Agent.create({ local: { cwd } })` against a workspace on disk; **`target.repos` must list exactly one repository**.
-- Cloud runtime uses `Agent.create({ cloud: { repos, autoCreatePR } })` for repository-backed runs. If **`target.repos` has one URL**, that becomes a single `cloud.repos` entry. If it has **multiple** URLs, the runner starts **separate** cloud agents—each with **one** repo—and merges their outcomes into one CLI summary.
+- Cloud runtime uses `Agent.create({ cloud: { env, repos, autoCreatePR, envVars? } })` for repository-backed runs. Every `target.repos` entry becomes one element of **`cloud.repos`** (see [Creating agents](https://cursor.com/docs/sdk/typescript)); **multiple URLs mean one agent and one multi-repo workspace**, not multiple separate `Agent.create` calls.
+- **`autoCreatePR`** and how many PRs open for a multi-repo run depend on your Cursor team and repository setup—validate in staging before relying on it for production automation.
 - Live runs require `CURSOR_API_KEY` and a working **`sqlite3`** native binding (see [Native sqlite3](#native-sqlite3-live-sdk-runs-only)).
 
 ## Guardrails

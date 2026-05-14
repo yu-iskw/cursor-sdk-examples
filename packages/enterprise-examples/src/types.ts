@@ -10,7 +10,7 @@ export interface ModelSelection {
   id: string;
 }
 
-export interface LocalRuntimeConfig {
+interface LocalRuntimeConfig {
   type: 'local';
   cwd: string;
   settingSources?: string[];
@@ -47,9 +47,14 @@ export interface EnterpriseTaskConfig {
   model: ModelSelection;
   dryRun: boolean;
   autoCreatePR: boolean;
+  /**
+   * For cloud runs only: names of `process.env` entries to pass through as SDK `cloud.envVars`.
+   * Omit secrets from committed YAML; set values in the shell or CI. Names must not start with `CURSOR_`.
+   */
+  cloudEnvVarNames?: string[];
 }
 
-export interface RunGitInfo {
+interface RunGitInfo {
   branches: Array<{ repoUrl: string; branch?: string; prUrl?: string }>;
 }
 
@@ -59,7 +64,7 @@ export interface AgentArtifact {
   updatedAt: string;
 }
 
-export type AgentRunStatus = 'finished' | 'error' | 'cancelled';
+type AgentRunStatus = 'finished' | 'error' | 'cancelled';
 
 export interface AgentRunResult {
   id: string;

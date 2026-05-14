@@ -1,12 +1,6 @@
 import { buildTaskPrompt } from '../prompts';
 
-import type {
-  AgentArtifact,
-  AgentRunResult,
-  EnterpriseTaskConfig,
-  RepositoryTarget,
-  StreamReporter,
-} from '../types';
+import type { AgentArtifact, AgentRunResult, EnterpriseTaskConfig, StreamReporter } from '../types';
 
 export { summarizeRunResult } from './result-summary';
 
@@ -54,113 +48,7 @@ export async function runEnterpriseTask(
 
   const Agent = deps?.Agent ?? ((await import('@cursor/sdk')) as CursorSdkModule).Agent;
 
-  if (config.runtime.type === 'cloud' && config.target.repos.length > 1) {
-    return runCloudTaskForEachRepo(config, reporter, Agent, apiKey);
-  }
-
   return runSingleEnterpriseTask(config, reporter, Agent, apiKey);
-}
-
-function prefixReporter(reporter: StreamReporter, label: string): StreamReporter {
-  const prefix = `[${label}] `;
-  return {
-    write(message: string) {
-      for (const line of message.split('\n')) {
-        if (line.length > 0) {
-          reporter.write(`${prefix}${line}\n`);
-        }
-      }
-    },
-  };
-}
-
-async function runCloudTaskForEachRepo(
-  config: EnterpriseTaskConfig,
-  reporter: StreamReporter,
-  Agent: AgentFactory,
-  apiKey: string,
-): Promise<AgentRunResult> {
-  const settled = await Promise.allSettled(
-    config.target.repos.map((repo) =>
-      runSingleEnterpriseTask(
-        { ...config, target: { repos: [repo] } },
-        prefixReporter(reporter, repo.repoUrl),
-        Agent,
-        apiKey,
-      ),
-    ),
-  );
-
-  return aggregateRepoResults(settled, config.target.repos);
-}
-
-function aggregateRepoResults(
-  settled: PromiseSettledResult<AgentRunResult>[],
-  repos: RepositoryTarget[],
-): AgentRunResult {
-  const fulfilled = settled.flatMap((entry) => (entry.status === 'fulfilled' ? [entry.value] : []));
-  const rejected = repos.flatMap((repo, index) => {
-    const entry = settled.at(index);
-    return entry?.status === 'rejected' ? [{ repoUrl: repo.repoUrl, reason: entry.reason }] : [];
-  });
-
-  const anyError = rejected.length > 0 || fulfilled.some((result) => result.status === 'error');
-  const anyCancelled = fulfilled.some((result) => result.status === 'cancelled');
-
-  let status: AgentRunResult['status'];
-  if (anyError) {
-    status = 'error';
-  } else if (anyCancelled) {
-    status = 'cancelled';
-  } else {
-    status = 'finished';
-  }
-
-  return {
-    id: fulfilled.map((result) => result.id).join(',') || 'multi-repo-run',
-    status,
-    result: formatMultiRepoResult(fulfilled, rejected),
-    durationMs: maxDurationMs(fulfilled),
-    git: { branches: fulfilled.flatMap((result) => result.git?.branches ?? []) },
-    artifacts: fulfilled.flatMap((result) => result.artifacts),
-  };
-}
-
-function formatMultiRepoResult(
-  fulfilled: AgentRunResult[],
-  rejected: { repoUrl: string; reason: unknown }[],
-): string {
-  const sections: string[] = [];
-
-  for (const result of fulfilled) {
-    const header = result.result === undefined ? '(no message)' : result.result;
-    sections.push(`[${result.status}] ${result.id}\n${header}`);
-  }
-
-  for (const { repoUrl, reason } of rejected) {
-    sections.push(`[failed] ${repoUrl}\n${formatRejectionReason(reason)}`);
-  }
-
-  return sections.join('\n\n---\n\n');
-}
-
-function formatRejectionReason(reason: unknown): string {
-  if (reason instanceof Error) {
-    return reason.message;
-  }
-
-  return String(reason);
-}
-
-function maxDurationMs(fulfilled: AgentRunResult[]): number | undefined {
-  const values = fulfilled
-    .map((result) => result.durationMs)
-    .filter((ms): ms is number => typeof ms === 'number');
-  if (values.length === 0) {
-    return undefined;
-  }
-
-  return Math.max(...values);
 }
 
 async function runSingleEnterpriseTask(
@@ -204,14 +92,42 @@ function buildAgentOptions(config: EnterpriseTaskConfig, apiKey: string): Record
     };
   }
 
+  const cloud: Record<string, unknown> = {
+    env: config.runtime.env,
+    repos: config.target.repos.map((r) => ({ url: r.repoUrl, startingRef: r.startingRef })),
+    autoCreatePR: config.autoCreatePR,
+  };
+
+  const envVars = buildCloudEnvVarsFromProcess(config.cloudEnvVarNames);
+  if (envVars !== undefined) {
+    cloud.envVars = envVars;
+  }
+
   return {
     ...base,
-    cloud: {
-      env: config.runtime.env,
-      repos: config.target.repos.map((r) => ({ url: r.repoUrl, startingRef: r.startingRef })),
-      autoCreatePR: config.autoCreatePR,
-    },
+    cloud,
   };
+}
+
+function buildCloudEnvVarsFromProcess(
+  names: string[] | undefined,
+): Record<string, string> | undefined {
+  if (names === undefined || names.length === 0) {
+    return undefined;
+  }
+
+  const out: Record<string, string> = {};
+  for (const key of names) {
+    // Keys are allowlisted in parseOptionalCloudEnvVarNames (no CURSOR_, safe charset).
+    // eslint-disable-next-line security/detect-object-injection -- dynamic env lookup for explicit name list
+    const value = process.env[key];
+    if (value !== undefined && value.length > 0) {
+      // eslint-disable-next-line security/detect-object-injection -- key from same allowlist
+      out[key] = value;
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function formatStreamEvent(event: unknown): string {

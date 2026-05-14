@@ -96,4 +96,52 @@ describe('parseTaskConfig', () => {
       }),
     ).toThrow('target must use either repos[] or repoUrl, not both');
   });
+
+  it('parses cloudEnvVarNames for cloud configs', () => {
+    const config = parseTaskConfig({
+      task: 'dependency-remediation',
+      runtime: { type: 'cloud' },
+      target: { repoUrl: 'https://github.com/acme/a' },
+      policy: 'Fix deps.',
+      cloudEnvVarNames: ['NPM_TOKEN', 'PIP_INDEX_URL'],
+    });
+
+    expect(config.cloudEnvVarNames).toEqual(['NPM_TOKEN', 'PIP_INDEX_URL']);
+  });
+
+  it('rejects cloudEnvVarNames entries starting with CURSOR_', () => {
+    expect(() =>
+      parseTaskConfig({
+        task: 'dependency-remediation',
+        runtime: { type: 'cloud' },
+        target: { repoUrl: 'https://github.com/acme/a' },
+        policy: 'Fix deps.',
+        cloudEnvVarNames: ['CURSOR_API_KEY'],
+      }),
+    ).toThrow('cloudEnvVarNames must not include names starting with CURSOR_');
+  });
+
+  it('rejects cloudEnvVarNames for local runtime', () => {
+    expect(() =>
+      parseTaskConfig({
+        task: 'dependency-remediation',
+        runtime: { type: 'local', cwd: '/work/a' },
+        target: { repoUrl: 'https://github.com/acme/a' },
+        policy: 'Fix deps.',
+        cloudEnvVarNames: ['NPM_TOKEN'],
+      }),
+    ).toThrow('cloudEnvVarNames is only valid for runtime.type: cloud');
+  });
+
+  it('rejects cloudEnvVarNames with invalid shell-style names', () => {
+    expect(() =>
+      parseTaskConfig({
+        task: 'dependency-remediation',
+        runtime: { type: 'cloud' },
+        target: { repoUrl: 'https://github.com/acme/a' },
+        policy: 'Fix deps.',
+        cloudEnvVarNames: ['PKG-TOKEN'],
+      }),
+    ).toThrow('cloudEnvVarNames entry "PKG-TOKEN" must match');
+  });
 });
