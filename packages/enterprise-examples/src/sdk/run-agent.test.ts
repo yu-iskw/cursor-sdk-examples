@@ -37,7 +37,7 @@ describe('summarizeRunResult', () => {
   });
 });
 
-describe('runEnterpriseTask multi-repo cloud fan-out', () => {
+describe('runEnterpriseTask multi-repo cloud unified agent', () => {
   beforeEach(() => {
     process.env.CURSOR_API_KEY = 'test-key';
   });
@@ -63,7 +63,12 @@ describe('runEnterpriseTask multi-repo cloud fan-out', () => {
   type WaitPayload = Pick<AgentRunResult, 'id' | 'status' | 'result' | 'durationMs' | 'git'>;
 
   type FakeAgentStep = { createError: Error } | { wait: WaitPayload };
-  type CreateOptions = { cloud?: { repos: Array<{ url: string }> } };
+  type CreateOptions = {
+    cloud?: {
+      repos: Array<{ url: string; startingRef?: string }>;
+      envVars?: Record<string, string>;
+    };
+  };
 
   function makeFakeAgent(
     recordedCreates: CreateOptions[],
@@ -105,33 +110,21 @@ describe('runEnterpriseTask multi-repo cloud fan-out', () => {
     };
   }
 
-  it('calls Agent.create twice with one cloud repo each', async () => {
+  it('calls Agent.create once with both repos in cloud.repos', async () => {
     const creates: CreateOptions[] = [];
     const agent = makeFakeAgent(creates, [
       {
         wait: {
-          id: 'run-a',
+          id: 'run-unified',
           status: 'finished',
-          result: 'Done A',
-          durationMs: 100,
+          result: 'Done A and B',
+          durationMs: 150,
           git: {
             branches: [
               {
                 repoUrl: 'https://github.com/acme/a',
                 prUrl: 'https://github.com/acme/a/pull/1',
               },
-            ],
-          },
-        },
-      },
-      {
-        wait: {
-          id: 'run-b',
-          status: 'finished',
-          result: 'Done B',
-          durationMs: 200,
-          git: {
-            branches: [
               {
                 repoUrl: 'https://github.com/acme/b',
                 prUrl: 'https://github.com/acme/b/pull/2',
@@ -142,93 +135,101 @@ describe('runEnterpriseTask multi-repo cloud fan-out', () => {
       },
     ]);
 
-    const aggregate = await runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent });
+    const result = await runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent });
 
-    expect(creates).toHaveLength(2);
-    const firstCloud = creates[0]?.cloud;
-    const secondCloud = creates[1]?.cloud;
-    expect(firstCloud?.repos).toHaveLength(1);
-    expect(firstCloud?.repos[0]?.url).toBe('https://github.com/acme/a');
-    expect(secondCloud?.repos).toHaveLength(1);
-    expect(secondCloud?.repos[0]?.url).toBe('https://github.com/acme/b');
+    expect(creates).toHaveLength(1);
+    const cloud = creates[0]?.cloud;
+    expect(cloud?.repos).toHaveLength(2);
+    expect(cloud?.repos[0]).toEqual({ url: 'https://github.com/acme/a', startingRef: 'main' });
+    expect(cloud?.repos[1]).toEqual({ url: 'https://github.com/acme/b', startingRef: 'develop' });
 
-    expect(aggregate.status).toBe('finished');
-    expect(aggregate.id).toBe('run-a,run-b');
-    expect(aggregate.durationMs).toBe(200);
-    expect(aggregate.git?.branches).toHaveLength(2);
-    expect(aggregate.git?.branches.map((b) => b.prUrl)).toEqual([
+    expect(result.status).toBe('finished');
+    expect(result.id).toBe('run-unified');
+    expect(result.durationMs).toBe(150);
+    expect(result.git?.branches).toHaveLength(2);
+    expect(result.git?.branches.map((b) => b.prUrl)).toEqual([
       'https://github.com/acme/a/pull/1',
       'https://github.com/acme/b/pull/2',
     ]);
-    expect(summarizeRunResult(aggregate)).toContain('https://github.com/acme/a/pull/1');
-    expect(summarizeRunResult(aggregate)).toContain('https://github.com/acme/b/pull/2');
+    expect(summarizeRunResult(result)).toContain('https://github.com/acme/a/pull/1');
+    expect(summarizeRunResult(result)).toContain('https://github.com/acme/b/pull/2');
   });
 
-  it('aggregates error when one repo rejects and preserves successful repo evidence', async () => {
+  it('propagates Agent.create failure', async () => {
     const creates: CreateOptions[] = [];
     const agent = makeFakeAgent(creates, [
-      {
-        wait: {
-          id: 'run-a',
-          status: 'finished',
-          result: 'OK',
-          git: {
-            branches: [
-              {
-                repoUrl: 'https://github.com/acme/a',
-                prUrl: 'https://github.com/acme/a/pull/1',
-              },
-            ],
-          },
-        },
-      },
-      { createError: new Error('Second agent failed') },
+      { createError: new Error('Cloud agent failed to start') },
     ]);
 
-    const aggregate = await runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent });
-
-    expect(aggregate.status).toBe('error');
-    expect(aggregate.git?.branches).toHaveLength(1);
-    expect(aggregate.git?.branches[0]?.prUrl).toBe('https://github.com/acme/a/pull/1');
-    expect(aggregate.result).toContain('Second agent failed');
-    expect(aggregate.result).toContain('run-a');
-    expect(summarizeRunResult(aggregate)).toContain('https://github.com/acme/a/pull/1');
+    await expect(
+      runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent }),
+    ).rejects.toThrow('Cloud agent failed to start');
+    expect(creates).toHaveLength(1);
   });
 
-  it('aggregates error when one run returns error status while keeping finished repo git info', async () => {
+  it('returns error status from the single cloud run', async () => {
     const creates: CreateOptions[] = [];
     const agent = makeFakeAgent(creates, [
       {
         wait: {
-          id: 'run-a',
-          status: 'finished',
-          result: 'OK',
-          git: {
-            branches: [
-              {
-                repoUrl: 'https://github.com/acme/a',
-                prUrl: 'https://github.com/acme/a/pull/1',
-              },
-            ],
-          },
-        },
-      },
-      {
-        wait: {
-          id: 'run-b',
+          id: 'run-unified',
           status: 'error',
           result: 'Remediation failed',
+          git: {
+            branches: [
+              {
+                repoUrl: 'https://github.com/acme/a',
+                prUrl: 'https://github.com/acme/a/pull/1',
+              },
+            ],
+          },
         },
       },
     ]);
 
-    const aggregate = await runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent });
+    const result = await runEnterpriseTask(cloudTwoRepoConfig(), devNull, { Agent: agent });
 
-    expect(creates).toHaveLength(2);
-    expect(aggregate.status).toBe('error');
-    expect(aggregate.git?.branches).toHaveLength(1);
-    expect(aggregate.git?.branches[0]?.prUrl).toBe('https://github.com/acme/a/pull/1');
-    expect(aggregate.result).toContain('Remediation failed');
-    expect(aggregate.result).toContain('[error] run-b');
+    expect(creates).toHaveLength(1);
+    expect(result.status).toBe('error');
+    expect(result.id).toBe('run-unified');
+    expect(result.git?.branches).toHaveLength(1);
+    expect(result.git?.branches[0]?.prUrl).toBe('https://github.com/acme/a/pull/1');
+    expect(result.result).toContain('Remediation failed');
+    expect(summarizeRunResult(result)).toContain('https://github.com/acme/a/pull/1');
+  });
+
+  it('passes cloud.envVars when cloudEnvVarNames is set and process env is present', async () => {
+    const creates: CreateOptions[] = [];
+    process.env.EXAMPLE_REGISTRY_TOKEN = 'secret-token';
+    try {
+      const config = parseTaskConfig({
+        task: 'dependency-remediation',
+        runtime: { type: 'cloud' },
+        target: {
+          repos: [
+            { repoUrl: 'https://github.com/acme/a', startingRef: 'main' },
+            { repoUrl: 'https://github.com/acme/b', startingRef: 'develop' },
+          ],
+        },
+        policy: 'Fix deps.',
+        cloudEnvVarNames: ['EXAMPLE_REGISTRY_TOKEN'],
+      });
+
+      const agent = makeFakeAgent(creates, [
+        {
+          wait: {
+            id: 'run-env',
+            status: 'finished',
+            result: 'ok',
+          },
+        },
+      ]);
+
+      await runEnterpriseTask(config, devNull, { Agent: agent });
+
+      expect(creates[0]?.cloud?.envVars).toEqual({ EXAMPLE_REGISTRY_TOKEN: 'secret-token' });
+    } finally {
+      delete process.env.EXAMPLE_REGISTRY_TOKEN;
+    }
   });
 });

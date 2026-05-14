@@ -31,6 +31,10 @@ export function parseTaskConfig(raw: unknown): EnterpriseTaskConfig {
   const runtime = parseRuntime(record.runtime);
   const policy = requireString(record.policy, 'policy');
   const target = parseTarget(record.target, runtime);
+  const cloudEnvVarNames = parseOptionalCloudEnvVarNames(record.cloudEnvVarNames);
+  if (runtime.type === 'local' && cloudEnvVarNames !== undefined && cloudEnvVarNames.length > 0) {
+    throw new Error('cloudEnvVarNames is only valid for runtime.type: cloud');
+  }
 
   return {
     task,
@@ -42,7 +46,38 @@ export function parseTaskConfig(raw: unknown): EnterpriseTaskConfig {
     model: parseModel(record.model),
     dryRun: optionalBoolean(record.dryRun, false, 'dryRun'),
     autoCreatePR: optionalBoolean(record.autoCreatePR, false, 'autoCreatePR'),
+    ...(cloudEnvVarNames !== undefined && cloudEnvVarNames.length > 0 ? { cloudEnvVarNames } : {}),
   };
+}
+
+function parseOptionalCloudEnvVarNames(raw: unknown): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(raw) || raw.some((value) => typeof value !== 'string')) {
+    throw new Error('cloudEnvVarNames must be an array of strings');
+  }
+
+  const names = raw as string[];
+  const safeName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  for (const name of names) {
+    if (name.startsWith('CURSOR_')) {
+      throw new Error('cloudEnvVarNames must not include names starting with CURSOR_');
+    }
+
+    if (!safeName.test(name)) {
+      throw new Error(
+        `cloudEnvVarNames entry "${name}" must match /^[A-Za-z_][A-Za-z0-9_]*$/ (shell-style variable names)`,
+      );
+    }
+  }
+
+  if (names.length === 0) {
+    return undefined;
+  }
+
+  return names;
 }
 
 function parseTarget(raw: unknown, runtime: RuntimeConfig): EnterpriseTaskTarget {
